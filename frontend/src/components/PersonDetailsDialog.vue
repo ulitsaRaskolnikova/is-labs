@@ -90,7 +90,6 @@
           </v-col>
         </v-row>
 
-        <!-- Related Objects Information -->
         <v-row class="mt-4" v-if="relatedData">
           <v-col cols="12" md="6" v-if="relatedData.location">
             <v-card variant="outlined" class="pa-4">

@@ -35,6 +35,8 @@ const menuItems = ref([
   { name: 'Persons', path: '/persons', icon: 'mdi-account' },
   { name: 'Locations', path: '/locations', icon: 'mdi-map-marker' },
   { name: 'Coordinates', path: '/coordinates', icon: 'mdi-crosshairs-gps' },
-  { name: 'Special Operations', path: '/special-operations', icon: 'mdi-cog' }
+  { name: 'Special Operations', path: '/special-operations', icon: 'mdi-cog' },
+  { name: 'File Upload', path: '/file-upload', icon: 'mdi-file-upload' },
+  { name: 'Import History', path: '/import-history', icon: 'mdi-history' }
 ])
 </script>

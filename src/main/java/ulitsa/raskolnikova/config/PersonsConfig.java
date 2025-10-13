@@ -6,13 +6,17 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
 import jakarta.persistence.PersistenceContext;
+import ulitsa.raskolnikova.entity.FileImportHistoryEntity;
 import ulitsa.raskolnikova.entity.LocationEntity;
 import ulitsa.raskolnikova.entity.PersonEntity;
 import ulitsa.raskolnikova.qualifier.CoordinatesRepo;
+import ulitsa.raskolnikova.qualifier.FileImportHistoryRepo;
 import ulitsa.raskolnikova.qualifier.LocationRepo;
 import ulitsa.raskolnikova.qualifier.PersonRepo;
 import ulitsa.raskolnikova.repository.CoordinatesRepository;
 import ulitsa.raskolnikova.repository.CrudRepository;
+import ulitsa.raskolnikova.repository.FileImportHistoryRepository;
+import ulitsa.raskolnikova.repository.LocationRepository;
 
 import java.util.Map;
 
@@ -39,12 +43,18 @@ public class PersonsConfig {
     }
 
     @Produces
-    @LocationRepo    public CrudRepository<LocationEntity> locationRepository() {
-        return new CrudRepository<>(em, LocationEntity.class);
+    @LocationRepo    public LocationRepository locationRepository() {
+        return new LocationRepository(EMF.createEntityManager());
     }
 
     @Produces
     @CoordinatesRepo    public CoordinatesRepository coordinatesRepository() {
         return new CoordinatesRepository(EMF.createEntityManager());
+    }
+
+    @Produces
+    @FileImportHistoryRepo
+    public FileImportHistoryRepository fileImportHistoryRepository() {
+        return new FileImportHistoryRepository(EMF.createEntityManager());
     }
 }

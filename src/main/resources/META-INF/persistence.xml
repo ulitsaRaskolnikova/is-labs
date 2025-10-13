@@ -11,6 +11,7 @@
     <class>ulitsa.raskolnikova.entity.LocationEntity</class>
     <class>ulitsa.raskolnikova.entity.CoordinatesEntity</class>
     <class>ulitsa.raskolnikova.entity.PersonEntity</class>
+    <class>ulitsa.raskolnikova.entity.FileImportHistoryEntity</class>
 
     <properties>
       <property name="eclipselink.logging.level" value="FINE"/>
@@ -25,6 +26,9 @@
   <persistence-unit name="local" transaction-type="RESOURCE_LOCAL">
     <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
 
+    <class>ulitsa.raskolnikova.entity.LocationEntity</class>
     <class>ulitsa.raskolnikova.entity.CoordinatesEntity</class>
+    <class>ulitsa.raskolnikova.entity.PersonEntity</class>
+    <class>ulitsa.raskolnikova.entity.FileImportHistoryEntity</class>
   </persistence-unit>
 </persistence>

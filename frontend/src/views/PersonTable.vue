@@ -16,7 +16,6 @@
             </v-btn>
           </v-card-title>
 
-          <!-- Search and Filters -->
           <v-card-text>
             <v-row>
               <v-col cols="12" md="6">
@@ -49,7 +48,6 @@
             </v-row>
           </v-card-text>
 
-          <!-- Data Table -->
           <v-data-table
             :headers="headers"
             :items="persons"
@@ -114,7 +112,6 @@
       </v-col>
     </v-row>
 
-    <!-- Person Dialog -->
     <PersonDialog
       v-model="dialog.show"
       :mode="dialog.mode"
@@ -123,7 +120,6 @@
       @close="closeDialog"
     />
 
-    <!-- Person Details Dialog -->
     <PersonDetailsDialog
       v-model="detailsDialog.show"
       :person="detailsDialog.data"

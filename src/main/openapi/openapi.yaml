@@ -260,10 +260,6 @@ paths:
         "204":
           description: удалены
 
-  # ------------------------
-  # Добавленные операции
-  # ------------------------
-
   /operations/deleteByNationality:
     delete:
       operationId: deleteByNationality

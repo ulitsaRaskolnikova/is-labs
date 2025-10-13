@@ -16,7 +16,6 @@
             </v-btn>
           </v-card-title>
 
-          <!-- Search -->
           <v-card-text>
             <v-row>
               <v-col cols="12" md="6">
@@ -31,7 +30,6 @@
             </v-row>
           </v-card-text>
 
-          <!-- Data Table -->
           <v-data-table
             :headers="headers"
             :items="locations"
@@ -63,7 +61,6 @@
       </v-col>
     </v-row>
 
-    <!-- Location Dialog -->
     <LocationEditDialog
       v-model="dialog.show"
       :mode="dialog.mode"
