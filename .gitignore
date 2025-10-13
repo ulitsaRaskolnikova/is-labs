@@ -1,0 +1,7 @@
+target
+person-backend.iml
+.idea
+.openapi-generator
+.openapi-generator-ignore
+person-backend.iml
+openapitools.json
