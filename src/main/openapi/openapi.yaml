@@ -1,0 +1,542 @@
+openapi: 3.0.3
+info:
+  title: Person Management API
+  version: 1.0.0
+  description: API для управления объектами Person. Backend на Jakarta EE + JPA (EclipseLink).
+servers:
+  - url: http://localhost:8080/api/
+tags:
+  - name: persons
+    description: Операции с Person
+  - name: locations
+    description: Операции с Location
+  - name: coordinates
+    description: Операции с Coordinates
+  - name: operations
+    description: Специальные операции (бизнес-логика)
+
+paths:
+  /persons/search:
+    post:
+      operationId: searchPersons
+      summary: поиск и фильтрация Person
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        "200":
+          description: страница Person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagePerson'
+
+  /persons:
+    post:
+      operationId: createPerson
+      summary: создать новый объект Person
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonRequest'
+      responses:
+        "201":
+          description: созданный Person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonResponse'
+
+  /persons/{id}:
+    get:
+      operationId: getPersonById
+      summary: получить Person по id
+      tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "200":
+          description: найденный Person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonResponse'
+        "404":
+          description: не найдено
+    put:
+      operationId: updatePerson
+      summary: обновить Person
+      tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonRequest'
+      responses:
+        "200":
+          description: обновлённый Person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonResponse'
+        "400":
+          description: ошибка валидации
+        "404":
+          description: не найдено
+    delete:
+      operationId: deletePerson
+      summary: удалить Person
+      tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "204":
+          description: удалён
+
+  /locations/search:
+    post:
+      operationId: searchLocations
+      summary: поиск и фильтрация Location
+      tags: [locations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        "200":
+          description: страница Location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageLocation'
+
+  /locations:
+    post:
+      operationId: createLocation
+      summary: создать новую Location
+      tags: [locations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationRequest'
+      responses:
+        "201":
+          description: созданная Location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationResponse'
+
+  /locations/{id}:
+    get:
+      operationId: getLocationById
+      tags: [locations]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "200":
+          description: найденная Location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationResponse'
+        "404":
+          description: не найдено
+    put:
+      operationId: updateLocation
+      tags: [locations]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationRequest'
+      responses:
+        "200":
+          description: обновлённая Location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationResponse'
+    delete:
+      operationId: deleteLocation
+      tags: [locations]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "204":
+          description: удалена
+
+  /coordinates/search:
+    post:
+      operationId: searchCoordinates
+      summary: поиск и фильтрация Coordinates
+      tags: [coordinates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        "200":
+          description: страница Coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageCoordinates'
+
+  /coordinates:
+    post:
+      operationId: createCoordinates
+      tags: [coordinates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoordinatesRequest'
+      responses:
+        "201":
+          description: созданные Coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoordinatesResponse'
+
+  /coordinates/{id}:
+    get:
+      operationId: getCoordinatesById
+      tags: [coordinates]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "200":
+          description: найденные Coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoordinatesResponse'
+    put:
+      operationId: updateCoordinates
+      tags: [coordinates]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoordinatesRequest'
+      responses:
+        "200":
+          description: обновлённые Coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoordinatesResponse'
+    delete:
+      operationId: deleteCoordinates
+      tags: [coordinates]
+      parameters:
+        - $ref: '#/components/parameters/idPath'
+      responses:
+        "204":
+          description: удалены
+
+  # ------------------------
+  # Добавленные операции
+  # ------------------------
+
+  /operations/deleteByNationality:
+    delete:
+      operationId: deleteByNationality
+      summary: удалить один объект с заданной национальностью
+      tags: [operations]
+      parameters:
+        - name: nationality
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Country'
+      responses:
+        "204":
+          description: объект удалён
+        "404":
+          description: объект не найден
+
+  /operations/sumHeight:
+    get:
+      operationId: sumHeight
+      summary: рассчитать сумму значений height для всех Person
+      tags: [operations]
+      responses:
+        "200":
+          description: сумма высот
+          content:
+            application/json:
+              schema:
+                type: number
+                format: double
+
+  /operations/countByHeight:
+    get:
+      operationId: countByHeight
+      summary: вернуть количество Person с заданным height
+      tags: [operations]
+      parameters:
+        - name: height
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: количество людей
+          content:
+            application/json:
+              schema:
+                type: integer
+
+  /operations/eyeColorShare:
+    get:
+      operationId: eyeColorShare
+      summary: вывести долю людей с заданным цветом глаз в процентах
+      tags: [operations]
+      parameters:
+        - name: eyeColor
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Color'
+      responses:
+        "200":
+          description: процент людей с данным цветом глаз
+          content:
+            application/json:
+              schema:
+                type: number
+                format: double
+
+  /operations/countByHairColorAndLocation:
+    get:
+      operationId: countByHairColorAndLocation
+      summary: вывести количество людей с заданным цветом волос в пределах указанной локации
+      tags: [operations]
+      parameters:
+        - name: hairColor
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Color'
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      responses:
+        "200":
+          description: количество людей
+          content:
+            application/json:
+              schema:
+                type: integer
+
+components:
+  parameters:
+    idPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+      description: идентификатор ресурса
+
+  schemas:
+    IdBase:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          readOnly: true
+
+    SortDirection:
+      type: string
+      enum: [ASC, DESC]
+
+    SortField:
+      type: object
+      properties:
+        field:
+          type: string
+        direction:
+          $ref: '#/components/schemas/SortDirection'
+
+    FilterField:
+      type: object
+      properties:
+        field:
+          type: string
+        pattern:
+          type: string
+
+    SearchRequest:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 0
+          default: 0
+        size:
+          type: integer
+          minimum: 1
+          default: 20
+        sort:
+          type: array
+          items:
+            $ref: '#/components/schemas/SortField'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterField'
+
+    Color:
+      type: string
+      enum: [RED, BLACK, BLUE, WHITE, BROWN]
+
+    Country:
+      type: string
+      enum: [RUSSIA, UNITED_KINGDOM, SPAIN, ITALY, SOUTH_KOREA]
+
+    CoordinatesRequest:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: number
+          format: double
+        y:
+          type: number
+          format: float
+          maximum: 258
+
+    CoordinatesResponse:
+      allOf:
+        - $ref: '#/components/schemas/IdBase'
+        - $ref: '#/components/schemas/CoordinatesRequest'
+
+    LocationRequest:
+      type: object
+      required: [x, y, z]
+      properties:
+        x:
+          type: number
+          format: double
+        y:
+          type: number
+          format: double
+        z:
+          type: integer
+          format: int32
+
+    LocationResponse:
+      allOf:
+        - $ref: '#/components/schemas/IdBase'
+        - $ref: '#/components/schemas/LocationRequest'
+
+    PersonRequest:
+      type: object
+      required: [name, coordinatesId, eyeColor, hairColor]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        coordinatesId:
+          type: integer
+          format: int32
+          minimum: 1
+        eyeColor:
+          $ref: '#/components/schemas/Color'
+        hairColor:
+          $ref: '#/components/schemas/Color'
+        locationId:
+          type: integer
+          format: int32
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+          nullable: true
+        nationality:
+          $ref: '#/components/schemas/Country'
+
+    PersonResponse:
+      allOf:
+        - $ref: '#/components/schemas/IdBase'
+        - $ref: '#/components/schemas/PersonRequest'
+        - type: object
+          required: [creationDate]
+          properties:
+            creationDate:
+              type: string
+              format: date-time
+              readOnly: true
+
+    PagePerson:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonResponse'
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    PageLocation:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationResponse'
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    PageCoordinates:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoordinatesResponse'
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
