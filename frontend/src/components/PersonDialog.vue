@@ -85,7 +85,6 @@
             ></v-select>
           </v-col>
 
-          <!-- Quick Create Buttons -->
           <v-divider class="my-4"></v-divider>
           <v-row>
             <v-col cols="12">
@@ -131,14 +130,12 @@
       </v-card-actions>
     </v-card>
 
-    <!-- Location Dialog -->
     <LocationDialog
       v-model="locationDialog.show"
       @save="onLocationSave"
       @close="closeLocationDialog"
     />
 
-    <!-- Coordinates Dialog -->
     <CoordinatesDialog
       v-model="coordinatesDialog.show"
       @save="onCoordinatesSave"

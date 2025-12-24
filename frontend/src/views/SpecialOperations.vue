@@ -11,7 +11,6 @@
           <v-card-text>
             <v-row>
 
-              <!-- Delete by Nationality -->
               <v-col cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                   <v-card-title class="text-h6">
@@ -46,7 +45,6 @@
                 </v-card>
               </v-col>
 
-              <!-- Sum of Heights -->
               <v-col cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                   <v-card-title class="text-h6">
@@ -76,7 +74,6 @@
                 </v-card>
               </v-col>
 
-              <!-- Count by Height -->
               <v-col cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                   <v-card-title class="text-h6">
@@ -111,7 +108,6 @@
                 </v-card>
               </v-col>
 
-              <!-- Eye Color Share -->
               <v-col cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                   <v-card-title class="text-h6">
@@ -146,7 +142,6 @@
                 </v-card>
               </v-col>
 
-              <!-- Count by Hair Color & Location -->
               <v-col cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                   <v-card-title class="text-h6">

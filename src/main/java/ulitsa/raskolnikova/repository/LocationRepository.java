@@ -2,27 +2,27 @@ package ulitsa.raskolnikova.repository;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
-import ulitsa.raskolnikova.entity.CoordinatesEntity;
+import ulitsa.raskolnikova.entity.LocationEntity;
 import ulitsa.raskolnikova.model.SearchRequest;
 
 import java.util.List;
 import java.util.Optional;
 
-public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
+public class LocationRepository extends CrudRepository<LocationEntity> {
 
     private final EntityManager em;
 
-    public CoordinatesRepository(EntityManager em) {
-        super(em, CoordinatesEntity.class);
+    public LocationRepository(EntityManager em) {
+        super(em, LocationEntity.class);
         this.em = em;
     }
 
     @Override
-    public CoordinatesEntity save(CoordinatesEntity entity) {
+    public LocationEntity save(LocationEntity entity) {
         EntityTransaction tx = em.getTransaction();
         try {
             tx.begin();
-            CoordinatesEntity result = super.save(entity);
+            LocationEntity result = super.save(entity);
             tx.commit();
             return result;
         } catch (Exception e) {
@@ -32,11 +32,11 @@ public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
     }
 
     @Override
-    public Optional<CoordinatesEntity> findById(Integer id) {
+    public Optional<LocationEntity> findById(Integer id) {
         EntityTransaction tx = em.getTransaction();
         try {
             tx.begin();
-            Optional<CoordinatesEntity> result = super.findById(id);
+            Optional<LocationEntity> result = super.findById(id);
             tx.commit();
             return result;
         } catch (Exception e) {
@@ -46,11 +46,11 @@ public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
     }
 
     @Override
-    public List<CoordinatesEntity> findAll(SearchRequest searchRequest) {
+    public List<LocationEntity> findAll(SearchRequest searchRequest) {
         EntityTransaction tx = em.getTransaction();
         try {
             tx.begin();
-            List<CoordinatesEntity> result = super.findAll(searchRequest);
+            List<LocationEntity> result = super.findAll(searchRequest);
             tx.commit();
             return result;
         } catch (Exception e) {
@@ -73,11 +73,11 @@ public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
     }
 
     @Override
-    public List<CoordinatesEntity> findAll() {
+    public List<LocationEntity> findAll() {
         EntityTransaction tx = em.getTransaction();
         try {
             tx.begin();
-            List<CoordinatesEntity> result = super.findAll();
+            List<LocationEntity> result = super.findAll();
             tx.commit();
             return result;
         } catch (Exception e) {
@@ -100,18 +100,19 @@ public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
         }
     }
 
-    public boolean existsByXAndY(double x, Float y) {
+    public boolean existsByXAndYAndZ(Double x, double y, int z) {
         EntityTransaction tx = em.getTransaction();
         try {
             tx.begin();
             jakarta.persistence.criteria.CriteriaBuilder cb = em.getCriteriaBuilder();
             jakarta.persistence.criteria.CriteriaQuery<Long> cq = cb.createQuery(Long.class);
-            jakarta.persistence.criteria.Root<CoordinatesEntity> root = cq.from(CoordinatesEntity.class);
+            jakarta.persistence.criteria.Root<LocationEntity> root = cq.from(LocationEntity.class);
             cq.select(cb.count(root));
             cq.where(
                 cb.and(
                     cb.equal(root.get("x"), x),
-                    cb.equal(root.get("y"), y)
+                    cb.equal(root.get("y"), y),
+                    cb.equal(root.get("z"), z)
                 )
             );
             Long count = em.createQuery(cq).getSingleResult();
@@ -123,3 +124,4 @@ public class CoordinatesRepository extends CrudRepository<CoordinatesEntity> {
         }
     }
 }
+

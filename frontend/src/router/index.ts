@@ -3,6 +3,8 @@ import PersonTable from '@/views/PersonTable.vue'
 import LocationTable from '@/views/LocationTable.vue'
 import CoordinatesTable from '@/views/CoordinatesTable.vue'
 import SpecialOperations from '@/views/SpecialOperations.vue'
+import FileUpload from '@/views/FileUpload.vue'
+import ImportHistory from '@/views/ImportHistory.vue'
 
 const routes = [
   {
@@ -28,6 +30,16 @@ const routes = [
     path: '/special-operations',
     name: 'SpecialOperations',
     component: SpecialOperations
+  },
+  {
+    path: '/file-upload',
+    name: 'FileUpload',
+    component: FileUpload
+  },
+  {
+    path: '/import-history',
+    name: 'ImportHistory',
+    component: ImportHistory
   }
 ]
 
