@@ -14,7 +14,6 @@ import ulitsa.raskolnikova.model.CoordinatesResponse;
 import ulitsa.raskolnikova.model.SearchRequest;
 import ulitsa.raskolnikova.qualifier.CoordinatesRepo;
 import ulitsa.raskolnikova.repository.CoordinatesRepository;
-import ulitsa.raskolnikova.repository.CrudRepository;
 
 @ApplicationScoped
 public class CoordinatesApiServiceImpl
