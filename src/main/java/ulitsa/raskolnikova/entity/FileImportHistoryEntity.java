@@ -35,5 +35,8 @@ public class FileImportHistoryEntity {
 
     @Column(name = "import_date", nullable = false, updatable = false)
     private LocalDateTime importDate = LocalDateTime.now();
+
+    @Column(name = "storage_path")
+    private String storagePath;
 }
 

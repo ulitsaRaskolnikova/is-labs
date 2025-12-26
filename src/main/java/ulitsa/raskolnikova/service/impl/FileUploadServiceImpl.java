@@ -3,7 +3,6 @@ package ulitsa.raskolnikova.service.impl;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.core.Response;
 import ulitsa.raskolnikova.entity.CoordinatesEntity;
 import ulitsa.raskolnikova.entity.FileImportHistoryEntity;
 import ulitsa.raskolnikova.entity.LocationEntity;
@@ -18,8 +17,10 @@ import ulitsa.raskolnikova.repository.CrudRepository;
 import ulitsa.raskolnikova.repository.FileImportHistoryRepository;
 import ulitsa.raskolnikova.repository.LocationRepository;
 import ulitsa.raskolnikova.service.FileUploadService;
+import ulitsa.raskolnikova.storage.MinIOService;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -53,25 +54,39 @@ public class FileUploadServiceImpl implements FileUploadService {
     @FileImportHistoryRepo
     private FileImportHistoryRepository fileImportHistoryRepository;
 
+    @Inject
+    private MinIOService minIOService;
+
     @Transactional
     @Override
     public FileUploadResult processFile(String fileName, InputStream inputStream) {
+        return processFile(fileName, inputStream, null);
+    }
+
+    @Transactional
+    @Override
+    public FileUploadResult processFile(String fileName, InputStream inputStream, String contentType) {
         logger.info("Processing file: " + fileName);
         
         List<ValidationError> errors = new ArrayList<>();
         
         try {
+            byte[] fileData = readInputStreamToByteArray(inputStream);
+            InputStream processingStream = new ByteArrayInputStream(fileData);
+            
             if (fileName.endsWith(".csv")) {
                 logger.info("File is CSV, processing CSV file...");
-                return processCsvFile(inputStream, fileName);
+                FileUploadResult result = processCsvFile(processingStream, fileName, fileData, contentType);
+                return result;
             } else if (fileName.endsWith(".zip")) {
                 logger.info("File is ZIP, processing ZIP archive...");
-                return processZipFile(inputStream, fileName);
+                FileUploadResult result = processZipFile(processingStream, fileName, fileData, contentType);
+                return result;
             } else {
                 logger.warning("Unsupported file type: " + fileName);
                 errors.add(new ValidationError(0, fileName, null, "Unsupported file type. Only CSV and ZIP files are allowed.", null));
                 FileUploadResult result = new FileUploadResult(0, 1, errors);
-                saveImportHistory(fileName, result);
+                saveImportHistory(fileName, result, null);
                 return result;
             }
         } catch (Exception e) {
@@ -79,12 +94,23 @@ public class FileUploadServiceImpl implements FileUploadService {
             e.printStackTrace();
             errors.add(new ValidationError(0, fileName, null, "Error processing file: " + e.getMessage(), null));
             FileUploadResult result = new FileUploadResult(0, 1, errors);
-            saveImportHistory(fileName, result);
+            saveImportHistory(fileName, result, null);
             return result;
         }
     }
+    
+    private byte[] readInputStreamToByteArray(InputStream inputStream) throws Exception {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] data = new byte[8192];
+        int nRead;
+        while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        buffer.flush();
+        return buffer.toByteArray();
+    }
 
-    private FileUploadResult processZipFile(InputStream zipStream, String zipFileName) {
+    private FileUploadResult processZipFile(InputStream zipStream, String zipFileName, byte[] fileData, String contentType) {
         List<ValidationError> allErrors = new ArrayList<>();
         List<List<ValidatedRecord>> allValidatedRecords = new ArrayList<>();
         List<String> fileNames = new ArrayList<>();
@@ -126,7 +152,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!allErrors.isEmpty()) {
             logger.info("Validation errors found in ZIP file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            saveImportHistory(zipFileName, result, null);
             return result;
         }
         
@@ -139,7 +165,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!allErrors.isEmpty()) {
             logger.info("Uniqueness errors found in ZIP file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            saveImportHistory(zipFileName, result, null);
             return result;
         }
         
@@ -148,7 +174,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!allErrors.isEmpty()) {
             logger.info("Existence errors found in database, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            saveImportHistory(zipFileName, result, null);
             return result;
         }
         
@@ -164,7 +190,18 @@ public class FileUploadServiceImpl implements FileUploadService {
         }
         
         FileUploadResult result = new FileUploadResult(totalProcessed, allErrors.size(), allErrors);
-        saveImportHistory(zipFileName, result);
+        
+        String storagePath = null;
+        if (result.getErrorCount() == 0 && fileData != null) {
+            try {
+                storagePath = minIOService.saveFile(zipFileName, new ByteArrayInputStream(fileData), fileData.length, contentType);
+                logger.info("File saved to MinIO after successful validation: " + storagePath);
+            } catch (Exception e) {
+                logger.warning("Failed to save file to MinIO after validation: " + e.getMessage());
+            }
+        }
+        
+        saveImportHistory(zipFileName, result, storagePath);
         return result;
     }
 
@@ -223,7 +260,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         return records;
     }
 
-    private FileUploadResult processCsvFile(InputStream csvStream, String fileName) {
+    private FileUploadResult processCsvFile(InputStream csvStream, String fileName, byte[] fileData, String contentType) {
         List<ValidationError> errors = new ArrayList<>();
         
         List<RecordWithLineNumber> records = parseCsvRecords(csvStream, fileName, errors);
@@ -244,7 +281,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!errors.isEmpty()) {
             logger.info("Validation errors found, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistory(fileName, result, null);
             return result;
         }
 
@@ -253,7 +290,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!errors.isEmpty()) {
             logger.info("Uniqueness errors found in file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistory(fileName, result, null);
             return result;
         }
 
@@ -262,7 +299,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!errors.isEmpty()) {
             logger.info("Existence errors found in database, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistory(fileName, result, null);
             return result;
         }
 
@@ -278,16 +315,33 @@ public class FileUploadServiceImpl implements FileUploadService {
         }
 
         FileUploadResult result = new FileUploadResult(processedCount, errors.size(), errors);
-        saveImportHistory(fileName, result);
+        
+        String storagePath = null;
+        if (result.getErrorCount() == 0 && fileData != null) {
+            try {
+                storagePath = minIOService.saveFile(fileName, new ByteArrayInputStream(fileData), fileData.length, contentType);
+                logger.info("File saved to MinIO after successful validation: " + storagePath);
+            } catch (Exception e) {
+                logger.warning("Failed to save file to MinIO after validation: " + e.getMessage());
+            }
+        }
+        
+        saveImportHistory(fileName, result, storagePath);
         return result;
     }
 
     @Transactional
     private void saveImportHistory(String fileName, FileUploadResult result) {
+        saveImportHistory(fileName, result, null);
+    }
+
+    @Transactional
+    private void saveImportHistory(String fileName, FileUploadResult result, String storagePath) {
         try {
             FileImportHistoryEntity history = new FileImportHistoryEntity();
             history.setFileName(fileName);
             history.setErrorCount(result.getErrorCount());
+            history.setStoragePath(storagePath);
             
             if (result.getErrorCount() == 0) {
                 history.setStatus("SUCCESS");

@@ -59,7 +59,8 @@ public class FileUploadController {
             }
 
             InputStream inputStream = filePart.getBody(InputStream.class, null);
-            FileUploadResult result = fileUploadService.processFile(fileName, inputStream);
+            String contentType = filePart.getMediaType() != null ? filePart.getMediaType().toString() : null;
+            FileUploadResult result = fileUploadService.processFile(fileName, inputStream, contentType);
             
             return Response.ok()
                     .entity(result)

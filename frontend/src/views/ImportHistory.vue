@@ -16,6 +16,7 @@
               :items-per-page="tableState.size"
               :page="tableState.page + 1"
               :server-items-length="totalElements"
+              :sort-by="defaultSortBy"
               @update:options="onOptionsChange"
               class="elevation-1"
             >
@@ -44,6 +45,23 @@
               <template v-slot:item.importDate="{ item }">
                 {{ formatDate(item.importDate) }}
               </template>
+              <template v-slot:item.actions="{ item }">
+                <v-btn
+                  v-if="item.storagePath"
+                  icon
+                  size="small"
+                  color="primary"
+                  @click="downloadFile(item.id, item.fileName)"
+                  :disabled="loading"
+                >
+                  <v-icon>mdi-download</v-icon>
+                </v-btn>
+                <v-tooltip v-else text="File not available">
+                  <template v-slot:activator="{ props }">
+                    <v-icon v-bind="props" color="grey">mdi-download-off</v-icon>
+                  </template>
+                </v-tooltip>
+              </template>
             </v-data-table>
           </v-card-text>
         </v-card>
@@ -65,6 +83,7 @@ interface FileImportHistoryResponse {
   status: string
   processedCount: number | null
   errorCount: number
+  storagePath: string | null
   importDate: string | number[] | null
 }
 
@@ -77,13 +96,16 @@ const totalElements = ref(0)
 
 const tableState = computed(() => tableStore.getTableState('importHistory'))
 
+const defaultSortBy = [{ key: 'importDate', order: 'desc' }]
+
 const headers = [
   { title: 'ID', key: 'id', sortable: true },
   { title: 'File Name', key: 'fileName', sortable: true },
   { title: 'Status', key: 'status', sortable: true },
   { title: 'Processed Count', key: 'processedCount', sortable: false },
   { title: 'Error Count', key: 'errorCount', sortable: true },
-  { title: 'Import Date', key: 'importDate', sortable: true }
+  { title: 'Import Date', key: 'importDate', sortable: true },
+  { title: 'Actions', key: 'actions', sortable: false, width: '100px' }
 ]
 
 const getStatusColor = (status: string) => {
@@ -161,7 +183,40 @@ const onOptionsChange = (options: any) => {
   loadHistory()
 }
 
+const downloadFile = async (id: number, fileName: string) => {
+  try {
+    const response = await apiClient.get(`/import-history/${id}/download`)
+    const { downloadUrl, fileName: actualFileName } = response.data
+
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.setAttribute('download', actualFileName || fileName)
+    link.setAttribute('target', '_blank')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    notificationStore.showNotification(
+      'File download started',
+      'success'
+    )
+  } catch (error: any) {
+    console.error('Error downloading file:', error)
+    notificationStore.showNotification(
+      error.response?.data?.error || 'Failed to download file',
+      'error'
+    )
+  }
+}
+
 onMounted(() => {
+  const currentState = tableStore.getTableState('importHistory')
+  if (!currentState.sort || currentState.sort.length === 0) {
+    tableStore.setSort('importHistory', [{
+      field: 'importDate',
+      direction: 'DESC'
+    }])
+  }
   loadHistory()
 })
 </script>
