@@ -167,6 +167,18 @@
             <version>6.2.11.Final</version>
             <scope>provided</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.ehcache</groupId>
+            <artifactId>ehcache</artifactId>
+            <version>3.10.8</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.persistence</groupId>
+            <artifactId>org.eclipse.persistence.jpa</artifactId>
+            <version>4.0.8</version>
+        </dependency>
     </dependencies>
 
     <properties>

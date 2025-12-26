@@ -4,4 +4,7 @@
        xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
                            https://jakarta.ee/xml/ns/jakartaee/beans_4_0.xsd"
        version="4.0" bean-discovery-mode="all">
+    <interceptors>
+        <class>ulitsa.raskolnikova.cache.CacheStatisticsInterceptor</class>
+    </interceptors>
 </beans>

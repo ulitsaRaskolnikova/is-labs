@@ -9,6 +9,12 @@ import lombok.Data;
         name = "location",
         uniqueConstraints = @UniqueConstraint(columnNames = {"x", "y", "z"})
 )
+@jakarta.persistence.Cacheable
+@org.eclipse.persistence.annotations.Cache(
+    type = org.eclipse.persistence.annotations.CacheType.FULL,
+    size = 500,
+    expiry = 1800000
+)
 public class LocationEntity {
 
     @Id
