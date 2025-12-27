@@ -40,7 +40,19 @@ public class CoordinatesApiServiceImpl
     @Transactional
     @Override
     public Response createCoordinates(CoordinatesRequest coordinates, SecurityContext securityContext) {
-        return create(coordinates, securityContext);
+        CoordinatesEntity entity = getMapper().toEntity(coordinates);
+        
+        boolean exists = repository.existsByXAndY(entity.getX(), entity.getY());
+        if (exists) {
+            throw new RuntimeException("Coordinates (x=" + entity.getX() + 
+                ", y=" + entity.getY() + ") already exists in database");
+        }
+        
+        CoordinatesEntity saved = repository.save(entity);
+        
+        return Response.ok()
+                .entity(getMapper().toResponse(saved))
+                .build();
     }
 
     @Transactional

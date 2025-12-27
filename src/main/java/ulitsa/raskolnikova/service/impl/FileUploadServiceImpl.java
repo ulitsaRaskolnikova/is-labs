@@ -640,8 +640,27 @@ public class FileUploadServiceImpl implements FileUploadService {
     private void saveRecord(ValidatedRecord validated) {
         logger.info("Saving validated record at line " + validated.lineNumber);
 
+        boolean coordinatesExists = coordinatesRepository.existsByXAndY(
+            validated.coordinatesRequest.getX(),
+            validated.coordinatesRequest.getY()
+        );
+        if (coordinatesExists) {
+            throw new RuntimeException("Coordinates (x=" + validated.coordinatesRequest.getX() + 
+                ", y=" + validated.coordinatesRequest.getY() + ") already exists in database");
+        }
+
         LocationEntity location = null;
         if (validated.locationRequest != null) {
+            boolean locationExists = locationRepository.existsByXAndYAndZ(
+                validated.locationRequest.getX(),
+                validated.locationRequest.getY(),
+                validated.locationRequest.getZ()
+            );
+            if (locationExists) {
+                throw new RuntimeException("Location (x=" + validated.locationRequest.getX() + 
+                    ", y=" + validated.locationRequest.getY() + 
+                    ", z=" + validated.locationRequest.getZ() + ") already exists in database");
+            }
             location = locationRepository.save(validated.locationRequest);
             logger.info("Created Location with ID: " + location.getId());
         }
@@ -649,9 +668,8 @@ public class FileUploadServiceImpl implements FileUploadService {
         CoordinatesEntity coordinates = coordinatesRepository.save(validated.coordinatesRequest);
         Integer coordinatesId = coordinates.getId();
         logger.info("Created Coordinates with ID: " + coordinatesId);
-        CoordinatesEntity onlyIdCoordinates = new CoordinatesEntity();
-        onlyIdCoordinates.setId(coordinatesId);
-        validated.personRequest.setCoordinates(onlyIdCoordinates);
+        
+        validated.personRequest.setCoordinates(coordinates);
         if (location != null) {
             validated.personRequest.setLocation(location);
         }
