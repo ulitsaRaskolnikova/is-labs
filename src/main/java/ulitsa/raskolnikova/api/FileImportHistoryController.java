@@ -5,14 +5,20 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
 import ulitsa.raskolnikova.entity.FileImportHistoryEntity;
 import ulitsa.raskolnikova.model.FileImportHistoryResponse;
 import ulitsa.raskolnikova.model.PageResponse;
 import ulitsa.raskolnikova.model.SearchRequest;
+import ulitsa.raskolnikova.model.SortDirection;
+import ulitsa.raskolnikova.model.SortField;
 import ulitsa.raskolnikova.qualifier.FileImportHistoryRepo;
 import ulitsa.raskolnikova.repository.FileImportHistoryRepository;
+import ulitsa.raskolnikova.storage.MinIOService;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -24,12 +30,21 @@ public class FileImportHistoryController {
     @FileImportHistoryRepo
     private FileImportHistoryRepository fileImportHistoryRepository;
 
+    @Inject
+    private MinIOService minIOService;
+
     @POST
     @Path("/search")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response searchHistory(SearchRequest searchRequest) {
         try {
+            if (searchRequest.getSort() == null || searchRequest.getSort().isEmpty()) {
+                SortField defaultSort = new SortField();
+                defaultSort.setField("importDate");
+                defaultSort.setDirection(SortDirection.DESC);
+                searchRequest.setSort(java.util.Arrays.asList(defaultSort));
+            }
             List<FileImportHistoryEntity> entities = fileImportHistoryRepository.findAll(searchRequest);
             List<FileImportHistoryResponse> responses = entities.stream()
                     .map(this::toResponse)
@@ -70,6 +85,107 @@ public class FileImportHistoryController {
         }
     }
 
+    @GET
+    @Path("/{id}/download")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDownloadUrl(@PathParam("id") Integer id) {
+        try {
+            Optional<FileImportHistoryEntity> entityOpt = fileImportHistoryRepository.findById(id);
+            if (entityOpt.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("{\"error\": \"File import history not found\"}")
+                        .build();
+            }
+
+            FileImportHistoryEntity entity = entityOpt.get();
+            String storagePath = entity.getStoragePath();
+
+            if (storagePath == null || storagePath.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("{\"error\": \"File not available in storage\"}")
+                        .build();
+            }
+
+            try {
+                String presignedUrl = minIOService.generatePresignedDownloadUrl(storagePath, 3600);
+                String fileName = minIOService.getFileNameFromPath(storagePath);
+                
+                Map<String, String> response = new HashMap<>();
+                response.put("downloadUrl", presignedUrl);
+                response.put("fileName", fileName);
+                
+                return Response.ok(response).build();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity("{\"error\": \"Error generating download URL: " + e.getMessage() + "\"}")
+                        .build();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.serverError()
+                    .entity("{\"error\": \"Error generating download URL: " + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
+
+    @GET
+    @Path("/{id}/file")
+    public Response downloadFile(@PathParam("id") Integer id) {
+        try {
+            Optional<FileImportHistoryEntity> entityOpt = fileImportHistoryRepository.findById(id);
+            if (entityOpt.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("File import history not found")
+                        .build();
+            }
+
+            FileImportHistoryEntity entity = entityOpt.get();
+            String storagePath = entity.getStoragePath();
+
+            if (storagePath == null || storagePath.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("File not available in storage")
+                        .build();
+            }
+
+            try {
+                java.io.InputStream fileStream = minIOService.getFile(storagePath);
+                String fileName = minIOService.getFileNameFromPath(storagePath);
+                String contentType = minIOService.getFileContentType(storagePath);
+
+                StreamingOutput streamingOutput = output -> {
+                    try (fileStream) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        while ((bytesRead = fileStream.read(buffer)) != -1) {
+                            output.write(buffer, 0, bytesRead);
+                        }
+                        output.flush();
+                    }
+                };
+
+                String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8)
+                        .replace("+", "%20");
+
+                return Response.ok(streamingOutput)
+                        .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''" + encodedFileName)
+                        .header("Content-Type", contentType != null ? contentType : "application/octet-stream")
+                        .build();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity("Error downloading file: " + e.getMessage())
+                        .build();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.serverError()
+                    .entity("Error downloading file: " + e.getMessage())
+                    .build();
+        }
+    }
+
     private FileImportHistoryResponse toResponse(FileImportHistoryEntity entity) {
         FileImportHistoryResponse response = new FileImportHistoryResponse();
         response.setId(entity.getId());
@@ -77,6 +193,7 @@ public class FileImportHistoryController {
         response.setStatus(entity.getStatus());
         response.setProcessedCount(entity.getProcessedCount());
         response.setErrorCount(entity.getErrorCount());
+        response.setStoragePath(entity.getStoragePath());
         if (entity.getImportDate() != null) {
             response.setImportDate(entity.getImportDate());
         }

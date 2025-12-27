@@ -174,12 +174,37 @@ const uploadFile = async () => {
     }
   } catch (error: any) {
     console.error('Error uploading file:', error)
-    const errorMessage = error.response?.data?.error || error.message || 'Failed to upload file'
+    
+    let errorMessage = 'Failed to upload file'
+    if (error.response?.status === 503 || error.response?.status === 500) {
+      const errorData = error.response?.data
+      if (errorData?.error) {
+        errorMessage = errorData.error
+      } else if (errorData?.message) {
+        errorMessage = errorData.message
+      } else {
+        errorMessage = 'Database is unavailable. Please try again later.'
+      }
+    } else if (error.response?.data?.error) {
+      errorMessage = error.response.data.error
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
     uploadForm.value.result = {
-      success: false,
+      processedCount: 0,
+      errorCount: 1,
+      errors: [{
+        lineNumber: 0,
+        fileName: uploadForm.value.file?.name || 'unknown',
+        field: null,
+        message: errorMessage,
+        recordData: null
+      }],
       message: errorMessage
     }
-    notificationStore.showNotification('Failed to upload file', 'error')
+    
+    notificationStore.showNotification(errorMessage, 'error')
   } finally {
     uploadForm.value.loading = false
   }

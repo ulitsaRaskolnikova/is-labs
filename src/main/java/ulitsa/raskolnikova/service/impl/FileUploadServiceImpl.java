@@ -3,7 +3,7 @@ package ulitsa.raskolnikova.service.impl;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.core.Response;
+import jakarta.transaction.UserTransaction;
 import ulitsa.raskolnikova.entity.CoordinatesEntity;
 import ulitsa.raskolnikova.entity.FileImportHistoryEntity;
 import ulitsa.raskolnikova.entity.LocationEntity;
@@ -18,8 +18,10 @@ import ulitsa.raskolnikova.repository.CrudRepository;
 import ulitsa.raskolnikova.repository.FileImportHistoryRepository;
 import ulitsa.raskolnikova.repository.LocationRepository;
 import ulitsa.raskolnikova.service.FileUploadService;
+import ulitsa.raskolnikova.storage.MinIOService;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -53,38 +55,133 @@ public class FileUploadServiceImpl implements FileUploadService {
     @FileImportHistoryRepo
     private FileImportHistoryRepository fileImportHistoryRepository;
 
+    @Inject
+    private MinIOService minIOService;
+
+    @Inject
+    private UserTransaction userTransaction;
+
     @Transactional
     @Override
     public FileUploadResult processFile(String fileName, InputStream inputStream) {
+        return processFile(fileName, inputStream, null);
+    }
+
+    @Override
+    public FileUploadResult processFile(String fileName, InputStream inputStream, String contentType) {
         logger.info("Processing file: " + fileName);
         
         List<ValidationError> errors = new ArrayList<>();
         
         try {
+            byte[] fileData = readInputStreamToByteArray(inputStream);
+            logger.info("File read successfully, size: " + (fileData != null ? fileData.length : 0) + " bytes");
+            InputStream processingStream = new ByteArrayInputStream(fileData);
+            
             if (fileName.endsWith(".csv")) {
                 logger.info("File is CSV, processing CSV file...");
-                return processCsvFile(inputStream, fileName);
+                FileUploadResult result = processCsvFile(processingStream, fileName, fileData, contentType);
+                return result;
             } else if (fileName.endsWith(".zip")) {
                 logger.info("File is ZIP, processing ZIP archive...");
-                return processZipFile(inputStream, fileName);
+                FileUploadResult result = processZipFile(processingStream, fileName, fileData, contentType);
+                return result;
             } else {
                 logger.warning("Unsupported file type: " + fileName);
                 errors.add(new ValidationError(0, fileName, null, "Unsupported file type. Only CSV and ZIP files are allowed.", null));
                 FileUploadResult result = new FileUploadResult(0, 1, errors);
-                saveImportHistory(fileName, result);
+                try {
+                    saveImportHistoryInTransaction(fileName, result, null);
+                } catch (Exception e) {
+                    logger.warning("Failed to save import history for unsupported file type: " + e.getMessage());
+                }
                 return result;
             }
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                logger.severe("Database error processing file " + fileName + ": " + e.getMessage());
+                throw e;
+            }
+            logger.severe("Error processing file " + fileName + ": " + e.getMessage());
+            e.printStackTrace();
+            errors.add(new ValidationError(0, fileName, null, "Error processing file: " + e.getMessage(), null));
+            FileUploadResult result = new FileUploadResult(0, 1, errors);
+            try {
+                saveImportHistoryInTransaction(fileName, result, null);
+            } catch (Exception saveException) {
+                if (isDatabaseError(saveException)) {
+                    logger.severe("Database error saving import history: " + saveException.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + saveException.getMessage(), saveException);
+                }
+                logger.warning("Failed to save import history: " + saveException.getMessage());
+            }
+            return result;
         } catch (Exception e) {
             logger.severe("Error processing file " + fileName + ": " + e.getMessage());
             e.printStackTrace();
             errors.add(new ValidationError(0, fileName, null, "Error processing file: " + e.getMessage(), null));
             FileUploadResult result = new FileUploadResult(0, 1, errors);
-            saveImportHistory(fileName, result);
+            try {
+                saveImportHistoryInTransaction(fileName, result, null);
+            } catch (Exception saveException) {
+                if (isDatabaseError(saveException)) {
+                    logger.severe("Database error saving import history: " + saveException.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + saveException.getMessage(), saveException);
+                }
+                logger.warning("Failed to save import history: " + saveException.getMessage());
+            }
             return result;
         }
     }
 
-    private FileUploadResult processZipFile(InputStream zipStream, String zipFileName) {
+    private boolean isDatabaseError(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        
+        Throwable cause = e.getCause();
+        if (cause == null) {
+            cause = e;
+        }
+        
+        String message = cause.getMessage();
+        if (message == null) {
+            message = "";
+        }
+        String lowerMessage = message.toLowerCase();
+        
+        return e instanceof java.sql.SQLTimeoutException ||
+               cause instanceof java.sql.SQLTimeoutException ||
+               e instanceof java.util.concurrent.TimeoutException ||
+               cause instanceof java.util.concurrent.TimeoutException ||
+               e instanceof jakarta.persistence.TransactionRequiredException ||
+               cause instanceof jakarta.persistence.TransactionRequiredException ||
+               (cause instanceof java.sql.SQLException && 
+                (lowerMessage.contains("timeout") || 
+                 lowerMessage.contains("connection refused") ||
+                 lowerMessage.contains("could not connect") ||
+                 lowerMessage.contains("connection to") ||
+                 lowerMessage.contains("is not available") ||
+                 lowerMessage.contains("connection reset") ||
+                 lowerMessage.contains("network") ||
+                 lowerMessage.contains("socket"))) ||
+               cause instanceof java.net.ConnectException ||
+               cause instanceof java.net.SocketTimeoutException ||
+               (e.getMessage() != null && e.getMessage().contains("Database is unavailable"));
+    }
+    
+    private byte[] readInputStreamToByteArray(InputStream inputStream) throws Exception {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] data = new byte[8192];
+        int nRead;
+        while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        buffer.flush();
+        return buffer.toByteArray();
+    }
+
+    private FileUploadResult processZipFile(InputStream zipStream, String zipFileName, byte[] fileData, String contentType) {
         List<ValidationError> allErrors = new ArrayList<>();
         List<List<ValidatedRecord>> allValidatedRecords = new ArrayList<>();
         List<String> fileNames = new ArrayList<>();
@@ -126,7 +223,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!allErrors.isEmpty()) {
             logger.info("Validation errors found in ZIP file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            saveImportHistoryInTransaction(zipFileName, result, null);
             return result;
         }
         
@@ -139,33 +236,117 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!allErrors.isEmpty()) {
             logger.info("Uniqueness errors found in ZIP file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            saveImportHistoryInTransaction(zipFileName, result, null);
             return result;
         }
         
-        checkExistenceInDatabase(allRecords, zipFileName, allErrors);
+        try {
+            checkExistenceInDatabaseInTransaction(allRecords, zipFileName, allErrors);
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            throw e;
+        }
         
         if (!allErrors.isEmpty()) {
             logger.info("Existence errors found in database, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
-            saveImportHistory(zipFileName, result);
+            try {
+                saveImportHistoryInTransaction(zipFileName, result, null);
+            } catch (RuntimeException e) {
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
+                logger.warning("Failed to save import history: " + e.getMessage());
+            }
             return result;
         }
         
-        int totalProcessed = 0;
-        for (ValidatedRecord validated : allRecords) {
-            try {
-                saveRecord(validated);
-                totalProcessed++;
-            } catch (Exception e) {
-                logger.warning("Error saving record: " + e.getMessage());
-                allErrors.add(new ValidationError(validated.lineNumber, validated.fileName, null, "Error saving record: " + e.getMessage(), validated.originalLine));
+        String storagePath = null;
+        boolean fileSavedToMinIO = false;
+
+        try {
+            if (fileData != null && fileData.length > 0) {
+                try {
+                    logger.info("Phase 1 (Prepare): Attempting to save file to MinIO, size: " + fileData.length + " bytes");
+                    storagePath = minIOService.saveFile(zipFileName, new ByteArrayInputStream(fileData), fileData.length, contentType);
+                    if (storagePath != null) {
+                        fileSavedToMinIO = true;
+                        logger.info("Phase 1 (Prepare): File saved to MinIO: " + storagePath);
+                    } else {
+                        logger.warning("Phase 1 (Prepare): MinIO returned null storage path (MinIO may be disabled)");
+                    }
+                } catch (Exception e) {
+                    logger.warning("Phase 1 (Prepare): Failed to save file to MinIO: " + e.getMessage());
+                    e.printStackTrace();
+                    String userFriendlyMessage = getMinIOErrorMessage(e);
+                    allErrors.add(new ValidationError(0, zipFileName, null, userFriendlyMessage, null));
+                    FileUploadResult result = new FileUploadResult(0, allErrors.size(), allErrors);
+                    try {
+                        saveImportHistoryInTransaction(zipFileName, result, null);
+                    } catch (RuntimeException dbError) {
+                        if (isDatabaseError(dbError)) {
+                            throw dbError;
+                        }
+                        logger.warning("Failed to save import history: " + dbError.getMessage());
+                    }
+                    return result;
+                }
+            } else {
+                logger.warning("Phase 1 (Prepare): File data is null or empty, skipping MinIO save");
             }
+
+            saveRecordsInTransaction(allRecords, allErrors);
+            int totalProcessed = allRecords.size() - allErrors.size();
+
+            FileUploadResult result = new FileUploadResult(totalProcessed, allErrors.size(), allErrors);
+
+            if (result.getErrorCount() > 0 && fileSavedToMinIO && storagePath != null) {
+                try {
+                    logger.info("Phase 3 (Rollback): Rolling back - deleting file from MinIO due to database errors");
+                    minIOService.deleteFile(storagePath);
+                    storagePath = null;
+                    fileSavedToMinIO = false;
+                } catch (Exception e) {
+                    logger.severe("Phase 3 (Rollback): Failed to delete file from MinIO during rollback: " + e.getMessage());
+                }
+            }
+
+            if (result.getErrorCount() == 0) {
+                if (fileSavedToMinIO && storagePath != null) {
+                    logger.info("Phase 2 (Commit): All records saved successfully, file remains in MinIO: " + storagePath);
+                } else {
+                    logger.warning("Phase 2 (Commit): All records saved successfully, but file was not saved to MinIO (MinIO may be disabled or file was empty)");
+                }
+            }
+
+            try {
+                logger.info("Saving import history with storagePath: " + (storagePath != null ? storagePath : "null"));
+                saveImportHistoryInTransaction(zipFileName, result, storagePath);
+            } catch (RuntimeException e) {
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
+                logger.warning("Failed to save import history: " + e.getMessage());
+            }
+            return result;
+
+        } catch (Exception e) {
+            if (fileSavedToMinIO && storagePath != null) {
+                try {
+                    logger.severe("Phase 3 (Rollback): Exception occurred, rolling back - deleting file from MinIO");
+                    minIOService.deleteFile(storagePath);
+                } catch (Exception rollbackException) {
+                    logger.severe("Phase 3 (Rollback): Failed to delete file from MinIO during rollback: " + rollbackException.getMessage());
+                }
+            }
+            if (isDatabaseError(e)) {
+                logger.severe("Database error in processZipFile: " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
+            throw e;
         }
-        
-        FileUploadResult result = new FileUploadResult(totalProcessed, allErrors.size(), allErrors);
-        saveImportHistory(zipFileName, result);
-        return result;
     }
 
     private List<RecordWithLineNumber> parseCsvRecords(InputStream csvStream, String fileName, List<ValidationError> errors) {
@@ -223,13 +404,13 @@ public class FileUploadServiceImpl implements FileUploadService {
         return records;
     }
 
-    private FileUploadResult processCsvFile(InputStream csvStream, String fileName) {
+    private FileUploadResult processCsvFile(InputStream csvStream, String fileName, byte[] fileData, String contentType) {
         List<ValidationError> errors = new ArrayList<>();
         
         List<RecordWithLineNumber> records = parseCsvRecords(csvStream, fileName, errors);
         if (!errors.isEmpty()) {
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistoryInTransaction(fileName, result, null);
             return result;
         }
 
@@ -244,7 +425,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!errors.isEmpty()) {
             logger.info("Validation errors found, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistoryInTransaction(fileName, result, null);
             return result;
         }
 
@@ -253,54 +434,165 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (!errors.isEmpty()) {
             logger.info("Uniqueness errors found in file, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            saveImportHistoryInTransaction(fileName, result, null);
             return result;
         }
 
-        checkExistenceInDatabase(validatedRecords, fileName, errors);
+        try {
+            checkExistenceInDatabaseInTransaction(validatedRecords, fileName, errors);
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            throw e;
+        }
 
         if (!errors.isEmpty()) {
             logger.info("Existence errors found in database, skipping database operations");
             FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
-            saveImportHistory(fileName, result);
+            try {
+                saveImportHistoryInTransaction(fileName, result, null);
+            } catch (RuntimeException e) {
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
+                logger.warning("Failed to save import history: " + e.getMessage());
+            }
             return result;
         }
 
-        int processedCount = 0;
-        for (ValidatedRecord validated : validatedRecords) {
-            try {
-                saveRecord(validated);
-                processedCount++;
-            } catch (Exception e) {
-                logger.warning("Error saving record at line " + validated.lineNumber + ": " + e.getMessage());
-                errors.add(new ValidationError(validated.lineNumber, fileName, null, "Error saving record: " + e.getMessage(), validated.originalLine));
-            }
-        }
+        String storagePath = null;
+        boolean fileSavedToMinIO = false;
 
-        FileUploadResult result = new FileUploadResult(processedCount, errors.size(), errors);
-        saveImportHistory(fileName, result);
-        return result;
+        try {
+            if (fileData != null && fileData.length > 0) {
+                try {
+                    logger.info("Phase 1 (Prepare): Attempting to save file to MinIO, size: " + fileData.length + " bytes");
+                    storagePath = minIOService.saveFile(fileName, new ByteArrayInputStream(fileData), fileData.length, contentType);
+                    if (storagePath != null) {
+                        fileSavedToMinIO = true;
+                        logger.info("Phase 1 (Prepare): File saved to MinIO: " + storagePath);
+                    } else {
+                        logger.warning("Phase 1 (Prepare): MinIO returned null storage path (MinIO may be disabled)");
+                    }
+                } catch (Exception e) {
+                    logger.warning("Phase 1 (Prepare): Failed to save file to MinIO: " + e.getMessage());
+                    e.printStackTrace();
+                    String userFriendlyMessage = getMinIOErrorMessage(e);
+                    errors.add(new ValidationError(0, fileName, null, userFriendlyMessage, null));
+                    FileUploadResult result = new FileUploadResult(0, errors.size(), errors);
+                    try {
+                        saveImportHistoryInTransaction(fileName, result, null);
+                    } catch (RuntimeException dbError) {
+                        if (isDatabaseError(dbError)) {
+                            throw dbError;
+                        }
+                        logger.warning("Failed to save import history: " + dbError.getMessage());
+                    }
+                    return result;
+                }
+            } else {
+                logger.warning("Phase 1 (Prepare): File data is null or empty, skipping MinIO save");
+            }
+
+            saveRecordsInTransaction(validatedRecords, errors);
+            int processedCount = validatedRecords.size() - errors.size();
+
+            FileUploadResult result = new FileUploadResult(processedCount, errors.size(), errors);
+
+            if (result.getErrorCount() > 0 && fileSavedToMinIO && storagePath != null) {
+                try {
+                    logger.info("Phase 3 (Rollback): Rolling back - deleting file from MinIO due to database errors");
+                    minIOService.deleteFile(storagePath);
+                    storagePath = null;
+                    fileSavedToMinIO = false;
+                } catch (Exception e) {
+                    logger.severe("Phase 3 (Rollback): Failed to delete file from MinIO during rollback: " + e.getMessage());
+                }
+            }
+
+            if (result.getErrorCount() == 0) {
+                if (fileSavedToMinIO && storagePath != null) {
+                    logger.info("Phase 2 (Commit): All records saved successfully, file remains in MinIO: " + storagePath);
+                } else {
+                    logger.warning("Phase 2 (Commit): All records saved successfully, but file was not saved to MinIO (MinIO may be disabled or file was empty)");
+                }
+            }
+
+            try {
+                logger.info("Saving import history with storagePath: " + (storagePath != null ? storagePath : "null"));
+                saveImportHistoryInTransaction(fileName, result, storagePath);
+            } catch (RuntimeException e) {
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
+                logger.warning("Failed to save import history: " + e.getMessage());
+            }
+            return result;
+
+        } catch (Exception e) {
+            if (fileSavedToMinIO && storagePath != null) {
+                try {
+                    logger.severe("Phase 3 (Rollback): Exception occurred, rolling back - deleting file from MinIO");
+                    minIOService.deleteFile(storagePath);
+                } catch (Exception rollbackException) {
+                    logger.severe("Phase 3 (Rollback): Failed to delete file from MinIO during rollback: " + rollbackException.getMessage());
+                }
+            }
+            if (isDatabaseError(e)) {
+                logger.severe("Database error in processZipFile: " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
+            throw e;
+        }
     }
 
-    @Transactional
-    private void saveImportHistory(String fileName, FileUploadResult result) {
+    private void saveImportHistoryInTransaction(String fileName, FileUploadResult result) {
+        saveImportHistoryInTransaction(fileName, result, null);
+    }
+
+    private void saveImportHistoryInTransaction(String fileName, FileUploadResult result, String storagePath) {
         try {
-            FileImportHistoryEntity history = new FileImportHistoryEntity();
-            history.setFileName(fileName);
-            history.setErrorCount(result.getErrorCount());
-            
-            if (result.getErrorCount() == 0) {
-                history.setStatus("SUCCESS");
-                history.setProcessedCount(result.getProcessedCount());
-            } else {
-                history.setStatus("FAILED");
-                history.setProcessedCount(null);
+            userTransaction.begin();
+            try {
+                FileImportHistoryEntity history = new FileImportHistoryEntity();
+                history.setFileName(fileName);
+                history.setErrorCount(result.getErrorCount());
+                history.setStoragePath(storagePath);
+                
+                if (result.getErrorCount() == 0) {
+                    history.setStatus("SUCCESS");
+                    history.setProcessedCount(result.getProcessedCount());
+                } else {
+                    history.setStatus("FAILED");
+                    history.setProcessedCount(null);
+                }
+                
+                fileImportHistoryRepository.save(history);
+                logger.info("Saved import history for file: " + fileName);
+                userTransaction.commit();
+            } catch (Exception e) {
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Database error saving import history: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
+                logger.severe("Failed to save import history: " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
             }
-            
-            fileImportHistoryRepository.save(history);
-            logger.info("Saved import history for file: " + fileName);
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            logger.severe("Failed to begin transaction for import history: " + e.getMessage());
+            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         } catch (Exception e) {
-            logger.warning("Failed to save import history: " + e.getMessage());
+            logger.severe("Failed to begin transaction for import history: " + e.getMessage());
+            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         }
     }
 
@@ -377,11 +669,86 @@ public class FileUploadServiceImpl implements FileUploadService {
         return new ValidatedRecord(lineNumber, fileName, locationRequest, coordinatesRequest, personRequest, originalLine);
     }
 
+    private void saveRecordsInTransaction(List<ValidatedRecord> validatedRecords, List<ValidationError> errors) {
+        try {
+            userTransaction.begin();
+            try {
+                for (ValidatedRecord validated : validatedRecords) {
+                    try {
+                        saveRecord(validated);
+                    } catch (Exception e) {
+                        if (isDatabaseError(e)) {
+                            logger.severe("Phase 2 (Commit): Database error saving record: " + e.getMessage());
+                            userTransaction.rollback();
+                            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                        }
+                        logger.warning("Phase 2 (Commit): Error saving record at line " + validated.lineNumber + ": " + e.getMessage());
+                        errors.add(new ValidationError(validated.lineNumber, validated.fileName, null, "Error saving record: " + e.getMessage(), validated.originalLine));
+                    }
+                }
+                userTransaction.commit();
+            } catch (RuntimeException e) {
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
+                throw e;
+            } catch (Exception e) {
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Phase 2 (Commit): Database error in transaction: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
+                logger.severe("Phase 2 (Commit): Error in transaction: " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            throw e;
+        } catch (Exception e) {
+            if (isDatabaseError(e)) {
+                logger.severe("Failed to begin transaction for saving records (database error): " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
+            logger.severe("Failed to begin transaction for saving records: " + e.getMessage());
+            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+        }
+    }
+
     private void saveRecord(ValidatedRecord validated) {
         logger.info("Saving validated record at line " + validated.lineNumber);
 
+        boolean coordinatesExists = coordinatesRepository.existsByXAndY(
+            validated.coordinatesRequest.getX(),
+            validated.coordinatesRequest.getY()
+        );
+        if (coordinatesExists) {
+            throw new RuntimeException("Coordinates (x=" + validated.coordinatesRequest.getX() + 
+                ", y=" + validated.coordinatesRequest.getY() + ") already exists in database");
+        }
+
         LocationEntity location = null;
         if (validated.locationRequest != null) {
+            boolean locationExists = locationRepository.existsByXAndYAndZ(
+                validated.locationRequest.getX(),
+                validated.locationRequest.getY(),
+                validated.locationRequest.getZ()
+            );
+            if (locationExists) {
+                throw new RuntimeException("Location (x=" + validated.locationRequest.getX() + 
+                    ", y=" + validated.locationRequest.getY() + 
+                    ", z=" + validated.locationRequest.getZ() + ") already exists in database");
+            }
             location = locationRepository.save(validated.locationRequest);
             logger.info("Created Location with ID: " + location.getId());
         }
@@ -389,9 +756,8 @@ public class FileUploadServiceImpl implements FileUploadService {
         CoordinatesEntity coordinates = coordinatesRepository.save(validated.coordinatesRequest);
         Integer coordinatesId = coordinates.getId();
         logger.info("Created Coordinates with ID: " + coordinatesId);
-        CoordinatesEntity onlyIdCoordinates = new CoordinatesEntity();
-        onlyIdCoordinates.setId(coordinatesId);
-        validated.personRequest.setCoordinates(onlyIdCoordinates);
+            
+        validated.personRequest.setCoordinates(coordinates);
         if (location != null) {
             validated.personRequest.setLocation(location);
         }
@@ -412,7 +778,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         String xStr = getValue(record, "locationx", "location_x");
         String yStr = getValue(record, "locationy", "location_y");
         String zStr = getValue(record, "locationz", "location_z");
-
+        
         if ((xStr == null || xStr.isEmpty()) && (yStr == null || yStr.isEmpty()) && (zStr == null || zStr.isEmpty())) {
             return null;
         }
@@ -630,40 +996,73 @@ public class FileUploadServiceImpl implements FileUploadService {
         }
     }
 
-    @Transactional
-    private void checkExistenceInDatabase(List<ValidatedRecord> validatedRecords, String defaultFileName, List<ValidationError> errors) {
-        for (ValidatedRecord record : validatedRecords) {
-            boolean coordinatesExists = coordinatesRepository.existsByXAndY(
-                record.coordinatesRequest.getX(),
-                record.coordinatesRequest.getY()
-            );
-            if (coordinatesExists) {
-                errors.add(new ValidationError(
-                    record.lineNumber,
-                    record.fileName,
-                    "coordinates",
-                    "Coordinates (x=" + record.coordinatesRequest.getX() + ", y=" + record.coordinatesRequest.getY() + ") already exists in database",
-                    record.originalLine
-                ));
-            }
+    private void checkExistenceInDatabaseInTransaction(List<ValidatedRecord> validatedRecords, String defaultFileName, List<ValidationError> errors) {
+        try {
+            userTransaction.begin();
+            try {
+                for (ValidatedRecord record : validatedRecords) {
+                    boolean coordinatesExists = coordinatesRepository.existsByXAndY(
+                        record.coordinatesRequest.getX(),
+                        record.coordinatesRequest.getY()
+                    );
+                    if (coordinatesExists) {
+                        errors.add(new ValidationError(
+                            record.lineNumber,
+                            record.fileName,
+                            "coordinates",
+                            "Coordinates (x=" + record.coordinatesRequest.getX() + ", y=" + record.coordinatesRequest.getY() + ") already exists in database",
+                            record.originalLine
+                        ));
+                    }
 
-            if (record.locationRequest != null) {
-                boolean locationExists = locationRepository.existsByXAndYAndZ(
-                    record.locationRequest.getX(),
-                    record.locationRequest.getY(),
-                    record.locationRequest.getZ()
-                );
-                if (locationExists) {
-                    errors.add(new ValidationError(
-                        record.lineNumber,
-                        record.fileName,
-                        "location",
-                        "Location (x=" + record.locationRequest.getX() + ", y=" + record.locationRequest.getY() + ", z=" + record.locationRequest.getZ() + ") already exists in database",
-                        record.originalLine
-                    ));
+                    if (record.locationRequest != null) {
+                        boolean locationExists = locationRepository.existsByXAndYAndZ(
+                            record.locationRequest.getX(),
+                            record.locationRequest.getY(),
+                            record.locationRequest.getZ()
+                        );
+                        if (locationExists) {
+                            errors.add(new ValidationError(
+                                record.lineNumber,
+                                record.fileName,
+                                "location",
+                                "Location (x=" + record.locationRequest.getX() + ", y=" + record.locationRequest.getY() + ", z=" + record.locationRequest.getZ() + ") already exists in database",
+                                record.originalLine
+                            ));
+                        }
+                    }
                 }
+                userTransaction.commit();
+            } catch (Exception e) {
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Database error during existence check: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
+                logger.severe("Database error during existence check: " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
             }
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            throw e;
+        } catch (Exception e) {
+            if (isDatabaseError(e)) {
+                logger.severe("Failed to begin transaction for existence check (database error): " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
+            logger.severe("Failed to begin transaction for existence check: " + e.getMessage());
+            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         }
+    }
+    
+    private String getMinIOErrorMessage(Throwable e) {
+        return "File storage service is unavailable. Please try again later.";
     }
 }
 

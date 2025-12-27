@@ -14,6 +14,7 @@ import ulitsa.raskolnikova.model.LocationResponse;
 import ulitsa.raskolnikova.model.SearchRequest;
 import ulitsa.raskolnikova.qualifier.LocationRepo;
 import ulitsa.raskolnikova.repository.CrudRepository;
+import ulitsa.raskolnikova.repository.LocationRepository;
 
 @ApplicationScoped
 public class LocationsApiServiceImpl
@@ -21,7 +22,7 @@ public class LocationsApiServiceImpl
 
     @Inject
     @LocationRepo
-    private CrudRepository<LocationEntity> repository;
+    private LocationRepository repository;
 
     @Inject
     private LocationMapper mapper;
@@ -39,7 +40,20 @@ public class LocationsApiServiceImpl
     @Transactional
     @Override
     public Response createLocation(LocationRequest location, SecurityContext securityContext) {
-        return create(location, securityContext);
+        LocationEntity entity = getMapper().toEntity(location);
+        
+        boolean exists = repository.existsByXAndYAndZ(entity.getX(), entity.getY(), entity.getZ());
+        if (exists) {
+            throw new RuntimeException("Location (x=" + entity.getX() + 
+                ", y=" + entity.getY() + 
+                ", z=" + entity.getZ() + ") already exists in database");
+        }
+        
+        LocationEntity saved = repository.save(entity);
+        
+        return Response.ok()
+                .entity(getMapper().toResponse(saved))
+                .build();
     }
 
     @Transactional

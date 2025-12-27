@@ -16,6 +16,7 @@ public class FileImportHistoryResponse {
     private String status;
     private Integer processedCount;
     private Integer errorCount;
+    private String storagePath;
     
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime importDate;
