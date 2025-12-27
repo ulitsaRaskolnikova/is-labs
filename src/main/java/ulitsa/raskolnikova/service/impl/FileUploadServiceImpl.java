@@ -148,19 +148,25 @@ public class FileUploadServiceImpl implements FileUploadService {
         if (message == null) {
             message = "";
         }
+        String lowerMessage = message.toLowerCase();
         
         return e instanceof java.sql.SQLTimeoutException ||
                cause instanceof java.sql.SQLTimeoutException ||
                e instanceof java.util.concurrent.TimeoutException ||
                cause instanceof java.util.concurrent.TimeoutException ||
+               e instanceof jakarta.persistence.TransactionRequiredException ||
+               cause instanceof jakarta.persistence.TransactionRequiredException ||
                (cause instanceof java.sql.SQLException && 
-                (message.contains("timeout") || 
-                 message.contains("Timeout") ||
-                 message.contains("Connection refused") ||
-                 message.contains("could not connect") ||
-                 message.contains("Connection to") ||
-                 message.contains("is not available"))) ||
+                (lowerMessage.contains("timeout") || 
+                 lowerMessage.contains("connection refused") ||
+                 lowerMessage.contains("could not connect") ||
+                 lowerMessage.contains("connection to") ||
+                 lowerMessage.contains("is not available") ||
+                 lowerMessage.contains("connection reset") ||
+                 lowerMessage.contains("network") ||
+                 lowerMessage.contains("socket"))) ||
                cause instanceof java.net.ConnectException ||
+               cause instanceof java.net.SocketTimeoutException ||
                (e.getMessage() != null && e.getMessage().contains("Database is unavailable"));
     }
     
@@ -566,10 +572,24 @@ public class FileUploadServiceImpl implements FileUploadService {
                 logger.info("Saved import history for file: " + fileName);
                 userTransaction.commit();
             } catch (Exception e) {
-                userTransaction.rollback();
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Database error saving import history: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
                 logger.severe("Failed to save import history: " + e.getMessage());
                 throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
             }
+        } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
+            logger.severe("Failed to begin transaction for import history: " + e.getMessage());
+            throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         } catch (Exception e) {
             logger.severe("Failed to begin transaction for import history: " + e.getMessage());
             throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
@@ -668,16 +688,38 @@ public class FileUploadServiceImpl implements FileUploadService {
                 }
                 userTransaction.commit();
             } catch (RuntimeException e) {
-                userTransaction.rollback();
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    throw e;
+                }
                 throw e;
             } catch (Exception e) {
-                userTransaction.rollback();
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Phase 2 (Commit): Database error in transaction: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
                 logger.severe("Phase 2 (Commit): Error in transaction: " + e.getMessage());
                 throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
             }
         } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
             throw e;
         } catch (Exception e) {
+            if (isDatabaseError(e)) {
+                logger.severe("Failed to begin transaction for saving records (database error): " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
             logger.severe("Failed to begin transaction for saving records: " + e.getMessage());
             throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         }
@@ -992,13 +1034,28 @@ public class FileUploadServiceImpl implements FileUploadService {
                 }
                 userTransaction.commit();
             } catch (Exception e) {
-                userTransaction.rollback();
+                try {
+                    userTransaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warning("Failed to rollback transaction: " + rollbackEx.getMessage());
+                }
+                if (isDatabaseError(e)) {
+                    logger.severe("Database error during existence check: " + e.getMessage());
+                    throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+                }
                 logger.severe("Database error during existence check: " + e.getMessage());
                 throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
             }
         } catch (RuntimeException e) {
+            if (isDatabaseError(e)) {
+                throw e;
+            }
             throw e;
         } catch (Exception e) {
+            if (isDatabaseError(e)) {
+                logger.severe("Failed to begin transaction for existence check (database error): " + e.getMessage());
+                throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
+            }
             logger.severe("Failed to begin transaction for existence check: " + e.getMessage());
             throw new RuntimeException("Database is unavailable: " + e.getMessage(), e);
         }
