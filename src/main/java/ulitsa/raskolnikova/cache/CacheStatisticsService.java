@@ -31,17 +31,18 @@ public class CacheStatisticsService {
         System.out.println("[CacheStatisticsService] @PostConstruct init() called");
         try {
             HikariConfig config = new HikariConfig();
-            config.setJdbcUrl("jdbc:postgresql://localhost:5432/postgres");
+            config.setJdbcUrl("jdbc:postgresql://localhost:5432/postgres?socketTimeout=5&connectTimeout=5");
             config.setUsername("postgres");
             config.setPassword("postgres");
             config.setDriverClassName("org.postgresql.Driver");
             config.setMinimumIdle(5);
             config.setMaximumPoolSize(20);
-            config.setConnectionTimeout(30000);
+            config.setConnectionTimeout(5000);
             config.setIdleTimeout(600000);
             config.setMaxLifetime(1800000);
             config.setLeakDetectionThreshold(60000);
             config.setPoolName("HikariCP-Pool");
+            config.setValidationTimeout(3000);
             HikariDataSource dataSource = new HikariDataSource(config);
 
             Map<String, Object> properties = new HashMap<>();

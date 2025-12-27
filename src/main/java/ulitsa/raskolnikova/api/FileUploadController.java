@@ -68,8 +68,30 @@ public class FileUploadController {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return Response.serverError()
-                    .entity("{\"error\": \"Error processing file: " + e.getMessage() + "\"}")
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                cause = e;
+            }
+            
+            String errorMessage = "Error processing file: " + e.getMessage();
+            Response.Status status = Response.Status.INTERNAL_SERVER_ERROR;
+            
+            if (cause instanceof java.sql.SQLTimeoutException || 
+                cause instanceof java.util.concurrent.TimeoutException ||
+                (cause instanceof java.sql.SQLException && cause.getMessage() != null && 
+                 (cause.getMessage().contains("timeout") || cause.getMessage().contains("Timeout")))) {
+                errorMessage = "Database connection timeout. Please try again later.";
+                status = Response.Status.SERVICE_UNAVAILABLE;
+            } else if (cause instanceof java.net.ConnectException ||
+                      (cause instanceof java.sql.SQLException && cause.getMessage() != null && 
+                       (cause.getMessage().contains("Connection refused") || 
+                        cause.getMessage().contains("could not connect")))) {
+                errorMessage = "Database is unavailable. Please try again later.";
+                status = Response.Status.SERVICE_UNAVAILABLE;
+            }
+            
+            return Response.status(status)
+                    .entity("{\"error\": \"" + errorMessage + "\"}")
                     .build();
         }
     }

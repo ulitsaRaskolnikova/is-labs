@@ -6,6 +6,7 @@ import io.minio.MinioClient;
 import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import io.minio.errors.MinioException;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
@@ -204,6 +205,39 @@ public class MinIOService {
         } catch (Exception e) {
             logger.severe("Error generating presigned download URL: " + e.getMessage());
             throw new RuntimeException("Failed to generate presigned download URL: " + e.getMessage(), e);
+        }
+    }
+
+    public void deleteFile(String storagePath) {
+        if (!minIOConfig.isEnabled()) {
+            logger.warning("MinIO is disabled, cannot delete file: " + storagePath);
+            return;
+        }
+
+        if (storagePath == null || storagePath.isEmpty()) {
+            logger.warning("Storage path is null or empty, cannot delete file");
+            return;
+        }
+
+        try {
+            MinioClient client = minIOConfig.getMinioClient();
+            String bucketName = minIOConfig.getBucketName();
+            String objectName = extractObjectName(storagePath);
+
+            RemoveObjectArgs removeObjectArgs = RemoveObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .build();
+
+            client.removeObject(removeObjectArgs);
+            logger.info("File deleted from MinIO: " + storagePath);
+
+        } catch (MinioException e) {
+            logger.severe("MinIO error deleting file " + storagePath + ": " + e.getMessage());
+            throw new RuntimeException("Failed to delete file from MinIO: " + e.getMessage(), e);
+        } catch (Exception e) {
+            logger.severe("Error deleting file from MinIO " + storagePath + ": " + e.getMessage());
+            throw new RuntimeException("Failed to delete file from MinIO: " + e.getMessage(), e);
         }
     }
 }
