@@ -185,16 +185,19 @@ const onOptionsChange = (options: any) => {
 
 const downloadFile = async (id: number, fileName: string) => {
   try {
-    const response = await apiClient.get(`/import-history/${id}/download`)
-    const { downloadUrl, fileName: actualFileName } = response.data
+    const response = await apiClient.get(`/import-history/${id}/file`, {
+      responseType: 'blob'
+    })
 
+    const blob = new Blob([response.data])
+    const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = downloadUrl
-    link.setAttribute('download', actualFileName || fileName)
-    link.setAttribute('target', '_blank')
+    link.href = url
+    link.setAttribute('download', fileName)
     document.body.appendChild(link)
     link.click()
     link.remove()
+    window.URL.revokeObjectURL(url)
 
     notificationStore.showNotification(
       'File download started',
@@ -202,10 +205,19 @@ const downloadFile = async (id: number, fileName: string) => {
     )
   } catch (error: any) {
     console.error('Error downloading file:', error)
-    notificationStore.showNotification(
-      error.response?.data?.error || 'Failed to download file',
-      'error'
-    )
+    let errorMessage = 'Failed to download file'
+    if (error.response?.data) {
+      try {
+        const text = await error.response.data.text()
+        const errorData = JSON.parse(text)
+        errorMessage = errorData.error || errorMessage
+      } catch {
+        errorMessage = error.response.status === 404 
+          ? 'File not found' 
+          : 'Failed to download file'
+      }
+    }
+    notificationStore.showNotification(errorMessage, 'error')
   }
 }
 
