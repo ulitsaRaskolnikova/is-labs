@@ -6,5 +6,6 @@ import java.io.InputStream;
 
 public interface FileUploadService {
     FileUploadResult processFile(String fileName, InputStream inputStream);
+    FileUploadResult processFile(String fileName, InputStream inputStream, String contentType);
 }
 

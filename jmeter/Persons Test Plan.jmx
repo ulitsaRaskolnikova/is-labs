@@ -30,7 +30,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{&quot;x&quot;:112,&quot;y&quot;:27}&#xd;
+                <stringProp name="Argument.value">{&quot;x&quot;:115,&quot;y&quot;:69}&#xd;
 </stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
@@ -98,9 +98,9 @@
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
                 <stringProp name="Argument.value">{&#xd;
-  &quot;x&quot;: 12.5,&#xd;
-  &quot;y&quot;: -3.7,&#xd;
-  &quot;z&quot;: 46&#xd;
+  &quot;x&quot;: 6.8,&#xd;
+  &quot;y&quot;: -6.9,&#xd;
+  &quot;z&quot;: 14&#xd;
 }&#xd;
 </stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>

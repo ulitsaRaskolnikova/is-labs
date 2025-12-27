@@ -6,6 +6,7 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import ulitsa.raskolnikova.api.PersonsApiService;
+import ulitsa.raskolnikova.cache.LogCacheStatistics;
 import ulitsa.raskolnikova.entity.CoordinatesEntity;
 import ulitsa.raskolnikova.entity.LocationEntity;
 import ulitsa.raskolnikova.entity.PersonEntity;
@@ -20,6 +21,7 @@ import ulitsa.raskolnikova.qualifier.PersonRepo;
 import ulitsa.raskolnikova.repository.CrudRepository;
 
 @ApplicationScoped
+@LogCacheStatistics(enabled = true)
 public class PersonsApiServiceImpl
         extends CrudService<PersonRequest, PersonResponse, PersonEntity> implements PersonsApiService {
 

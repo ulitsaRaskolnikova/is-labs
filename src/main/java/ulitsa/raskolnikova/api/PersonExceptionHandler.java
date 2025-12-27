@@ -12,6 +12,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.postgresql.util.PSQLException;
 
+import java.net.ConnectException;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
+import java.util.concurrent.TimeoutException;
+
 @NoArgsConstructor
 @Provider
 public class PersonExceptionHandler implements ExceptionMapper<Exception> {
@@ -20,18 +25,66 @@ public class PersonExceptionHandler implements ExceptionMapper<Exception> {
     public Response toResponse(Exception exception) {
         exception.printStackTrace();
         ErrorResponse error;
-        if (exception instanceof RollbackException && exception.getCause() != null
-                && exception.getCause().getMessage().contains("duplicate")
-                || exception instanceof PSQLException
-                || exception instanceof PersistenceException) {
+        
+        Throwable cause = exception.getCause();
+        if (cause == null) {
+            cause = exception;
+        }
+        
+        if (exception instanceof RollbackException && cause != null
+                && cause.getMessage() != null && cause.getMessage().contains("duplicate")) {
             error = new ErrorResponse(
                     "BAD_REQUEST",
                     "Already exists"
             );
+        } else if (exception instanceof PSQLException || exception instanceof PersistenceException) {
+            if (cause instanceof SQLTimeoutException || 
+                (cause instanceof SQLException && cause.getMessage() != null && 
+                 (cause.getMessage().contains("timeout") || cause.getMessage().contains("Timeout")))) {
+                error = new ErrorResponse(
+                        "SERVICE_UNAVAILABLE",
+                        "Database connection timeout. Please try again later."
+                );
+                return Response
+                        .status(Response.Status.SERVICE_UNAVAILABLE)
+                        .type(MediaType.APPLICATION_JSON)
+                        .entity(error)
+                        .build();
+            } else if (cause instanceof ConnectException || 
+                      (cause instanceof SQLException && cause.getMessage() != null && 
+                       (cause.getMessage().contains("Connection refused") || 
+                        cause.getMessage().contains("could not connect")))) {
+                error = new ErrorResponse(
+                        "SERVICE_UNAVAILABLE",
+                        "Database is unavailable. Please try again later."
+                );
+                return Response
+                        .status(Response.Status.SERVICE_UNAVAILABLE)
+                        .type(MediaType.APPLICATION_JSON)
+                        .entity(error)
+                        .build();
+            } else {
+                error = new ErrorResponse(
+                        "BAD_REQUEST",
+                        "Database error: " + (cause.getMessage() != null ? cause.getMessage() : "Unexpected error")
+                );
+            }
+        } else if (exception instanceof TimeoutException || 
+                   (cause instanceof TimeoutException) ||
+                   (cause instanceof SQLTimeoutException)) {
+            error = new ErrorResponse(
+                    "SERVICE_UNAVAILABLE",
+                    "Request timeout. Database may be unavailable."
+            );
+            return Response
+                    .status(Response.Status.SERVICE_UNAVAILABLE)
+                    .type(MediaType.APPLICATION_JSON)
+                    .entity(error)
+                    .build();
         } else {
             error = new ErrorResponse(
                     "BAD_REQUEST",
-                    exception.getCause() != null ? exception.getCause().getMessage() : "Unexpected error occurred"
+                    cause.getMessage() != null ? cause.getMessage() : "Unexpected error occurred"
             );
         }
 

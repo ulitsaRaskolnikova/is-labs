@@ -10,6 +10,12 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "person")
+@jakarta.persistence.Cacheable
+@org.eclipse.persistence.annotations.Cache(
+    type = org.eclipse.persistence.annotations.CacheType.FULL,
+    size = 500,
+    expiry = 1800000
+)
 public class PersonEntity {
 
     @Id

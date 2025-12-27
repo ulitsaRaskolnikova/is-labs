@@ -59,7 +59,8 @@ public class FileUploadController {
             }
 
             InputStream inputStream = filePart.getBody(InputStream.class, null);
-            FileUploadResult result = fileUploadService.processFile(fileName, inputStream);
+            String contentType = filePart.getMediaType() != null ? filePart.getMediaType().toString() : null;
+            FileUploadResult result = fileUploadService.processFile(fileName, inputStream, contentType);
             
             return Response.ok()
                     .entity(result)
@@ -67,8 +68,43 @@ public class FileUploadController {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return Response.serverError()
-                    .entity("{\"error\": \"Error processing file: " + e.getMessage() + "\"}")
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                cause = e;
+            }
+            
+            String errorMessage = "Error processing file: " + e.getMessage();
+            Response.Status status = Response.Status.INTERNAL_SERVER_ERROR;
+            
+            String causeMessage = cause.getMessage();
+            if (causeMessage == null) {
+                causeMessage = "";
+            }
+            String lowerCauseMessage = causeMessage.toLowerCase();
+            
+            if (cause instanceof java.sql.SQLTimeoutException || 
+                cause instanceof java.util.concurrent.TimeoutException ||
+                cause instanceof java.net.SocketTimeoutException ||
+                (cause instanceof java.sql.SQLException && 
+                 (lowerCauseMessage.contains("timeout") || lowerCauseMessage.contains("timed out"))) ||
+                (e.getMessage() != null && e.getMessage().toLowerCase().contains("timeout"))) {
+                errorMessage = "Database connection timeout. The database is not responding. Please try again later.";
+                status = Response.Status.SERVICE_UNAVAILABLE;
+            } else if (cause instanceof java.net.ConnectException ||
+                      cause instanceof jakarta.persistence.TransactionRequiredException ||
+                      (cause instanceof java.sql.SQLException && 
+                       (lowerCauseMessage.contains("connection refused") || 
+                        lowerCauseMessage.contains("could not connect") ||
+                        lowerCauseMessage.contains("connection to") ||
+                        lowerCauseMessage.contains("is not available") ||
+                        lowerCauseMessage.contains("connection reset"))) ||
+                      (e.getMessage() != null && e.getMessage().contains("Database is unavailable"))) {
+                errorMessage = "Database is unavailable. Please check the database connection and try again later.";
+                status = Response.Status.SERVICE_UNAVAILABLE;
+            }
+            
+            return Response.status(status)
+                    .entity("{\"error\": \"" + errorMessage + "\"}")
                     .build();
         }
     }

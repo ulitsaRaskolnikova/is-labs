@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.*;
 import lombok.RequiredArgsConstructor;
+import ulitsa.raskolnikova.cache.CacheStatisticsService;
 import ulitsa.raskolnikova.model.FilterField;
 import ulitsa.raskolnikova.model.SearchRequest;
 import ulitsa.raskolnikova.model.SortDirection;
@@ -12,13 +13,21 @@ import ulitsa.raskolnikova.model.SortField;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 @RequiredArgsConstructor
 public class CrudRepository<T> {
 
+    private static final Logger logger = Logger.getLogger(CrudRepository.class.getName());
+    private static CacheStatisticsService cacheStatisticsService;
+
     private final EntityManager em;
 
     private final Class<T> entityClass;
+
+    public static void setCacheStatisticsService(CacheStatisticsService service) {
+        cacheStatisticsService = service;
+    }
 
     public T save(T entity) {
         em.persist(entity);
@@ -26,10 +35,36 @@ public class CrudRepository<T> {
     }
 
     public Optional<T> findById(Integer id) {
-        return Optional.ofNullable(em.find(entityClass, id));
+        System.out.println("[CrudRepository] findById(" + id + ") called for " + entityClass.getSimpleName());
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("Before findById(" + id + "): " + entityClass.getSimpleName());
+        }
+        
+        long startTime = System.nanoTime();
+        T result = em.find(entityClass, id);
+        long executionTime = (System.nanoTime() - startTime) / 1_000_000;
+        boolean found = result != null;
+        
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            if (found && executionTime < 1) {
+                cacheStatisticsService.recordCacheHit();
+            } else if (found) {
+                cacheStatisticsService.recordCacheMiss();
+            }
+        }
+        System.out.println("[CrudRepository] findById(" + id + ") " + (found ? "found" : "not found"));
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("After findById(" + id + "): " + entityClass.getSimpleName() + " - " + (found ? "found" : "not found"));
+        }
+        return Optional.ofNullable(result);
     }
 
     public List<T> findAll(SearchRequest searchRequest) {
+        System.out.println("[CrudRepository] findAll(SearchRequest) called for " + entityClass.getSimpleName());
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("Before findAll(SearchRequest): " + entityClass.getSimpleName());
+        }
+        
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<T> cq = cb.createQuery(entityClass);
         Root<T> root = cq.from(entityClass);
@@ -62,12 +97,29 @@ public class CrudRepository<T> {
         }
 
         TypedQuery<T> query = em.createQuery(cq);
+        query.setHint("eclipselink.query-results-cache", "true");
+        query.setHint("eclipselink.query-results-cache.expiry", "300000");
         int page = searchRequest.getPage() != null ? searchRequest.getPage() : 0;
         int size = searchRequest.getSize() != null ? searchRequest.getSize() : 20;
         query.setFirstResult(page * size);
         query.setMaxResults(size);
 
-        return query.getResultList();
+        long startTime = System.nanoTime();
+        List<T> result = query.getResultList();
+        long executionTime = (System.nanoTime() - startTime) / 1_000_000;
+        
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            if (executionTime < 5) {
+                cacheStatisticsService.recordQueryCacheHit();
+            } else {
+                cacheStatisticsService.recordQueryCacheMiss();
+            }
+        }
+        System.out.println("[CrudRepository] findAll(SearchRequest) returned " + result.size() + " results");
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("After findAll(SearchRequest): " + entityClass.getSimpleName() + " - " + result.size() + " results");
+        }
+        return result;
     }
 
     public void deleteById(Integer id) {
@@ -78,11 +130,35 @@ public class CrudRepository<T> {
     }
 
     public List<T> findAll() {
+        System.out.println("[CrudRepository] findAll() called for " + entityClass.getSimpleName());
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("Before findAll(): " + entityClass.getSimpleName());
+        }
+        
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<T> cq = cb.createQuery(entityClass);
         Root<T> root = cq.from(entityClass);
         cq.select(root);
-        return em.createQuery(cq).getResultList();
+        TypedQuery<T> query = em.createQuery(cq);
+        query.setHint("eclipselink.query-results-cache", "true");
+        query.setHint("eclipselink.query-results-cache.expiry", "300000");
+        
+        long startTime = System.nanoTime();
+        List<T> result = query.getResultList();
+        long executionTime = (System.nanoTime() - startTime) / 1_000_000;
+        
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            if (executionTime < 5) {
+                cacheStatisticsService.recordQueryCacheHit();
+            } else {
+                cacheStatisticsService.recordQueryCacheMiss();
+            }
+        }
+        System.out.println("[CrudRepository] findAll() returned " + result.size() + " results");
+        if (cacheStatisticsService != null && cacheStatisticsService.isLoggingEnabled()) {
+            cacheStatisticsService.logCacheStatistics("After findAll(): " + entityClass.getSimpleName() + " - " + result.size() + " results");
+        }
+        return result;
     }
 
     public long countAll() {
@@ -90,6 +166,9 @@ public class CrudRepository<T> {
         CriteriaQuery<Long> cq = cb.createQuery(Long.class);
         Root<T> root = cq.from(entityClass);
         cq.select(cb.count(root));
-        return em.createQuery(cq).getSingleResult();
+        TypedQuery<Long> query = em.createQuery(cq);
+        query.setHint("eclipselink.query-results-cache", "true");
+        query.setHint("eclipselink.query-results-cache.expiry", "300000");
+        return query.getSingleResult();
     }
 }

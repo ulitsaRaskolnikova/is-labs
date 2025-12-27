@@ -8,6 +8,12 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "file_import_history")
+@jakarta.persistence.Cacheable
+@org.eclipse.persistence.annotations.Cache(
+    type = org.eclipse.persistence.annotations.CacheType.FULL,
+    size = 100,
+    expiry = 1800000
+)
 public class FileImportHistoryEntity {
 
     @Id
@@ -29,5 +35,8 @@ public class FileImportHistoryEntity {
 
     @Column(name = "import_date", nullable = false, updatable = false)
     private LocalDateTime importDate = LocalDateTime.now();
+
+    @Column(name = "storage_path")
+    private String storagePath;
 }
 

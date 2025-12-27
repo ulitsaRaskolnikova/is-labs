@@ -20,6 +20,11 @@
       <property name="eclipselink.target-database" value="PostgreSQL"/>
       <property name="eclipselink.target-server" value="JBoss"/>
       <property name="eclipselink.default-schema" value="public"/>
+      <property name="eclipselink.cache.shared.default" value="true"/>
+      <property name="eclipselink.cache.type.default" value="FULL"/>
+      <property name="eclipselink.cache.size.default" value="1000"/>
+      <property name="eclipselink.query-results-cache" value="true"/>
+      <property name="eclipselink.query-results-cache.size" value="100"/>
     </properties>
   </persistence-unit>
 
@@ -30,5 +35,16 @@
     <class>ulitsa.raskolnikova.entity.CoordinatesEntity</class>
     <class>ulitsa.raskolnikova.entity.PersonEntity</class>
     <class>ulitsa.raskolnikova.entity.FileImportHistoryEntity</class>
+
+    <properties>
+      <property name="eclipselink.cache.shared.default" value="true"/>
+      <property name="eclipselink.cache.type.default" value="FULL"/>
+      <property name="eclipselink.cache.size.default" value="1000"/>
+      <property name="eclipselink.query-results-cache" value="true"/>
+      <property name="eclipselink.query-results-cache.size" value="100"/>
+      <property name="eclipselink.logging.level" value="FINE"/>
+      <property name="eclipselink.ddl-generation" value="none"/>
+      <property name="eclipselink.target-database" value="PostgreSQL"/>
+    </properties>
   </persistence-unit>
 </persistence>
